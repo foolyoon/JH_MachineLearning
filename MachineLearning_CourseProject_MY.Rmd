@@ -1,0 +1,121 @@
+---
+title: "Machine Learning Course Project"
+author: "Manny Yoon"
+date: "Sunday, February 22, 2015"
+output: html_document
+---
+
+First, load data from csv file:
+
+```{r, message=FALSE, warning=FALSE}
+library(caret);library(ggplot2);library(gridExtra)
+ftest = read.csv("pml-testing.csv", header=TRUE, sep=",")
+tdata= read.csv("pml-training.csv", header=TRUE, sep=",")
+dim(tdata)
+```
+
+There are too many NA or null parameters. Let's remove near zero variables
+
+```{r, message=FALSE, warning=FALSE}
+nsv = nearZeroVar(tdata,saveMetrics=TRUE)
+tdata = tdata[,-which(nsv$nzv==TRUE)]
+```
+
+But, still we have NA dominant variables. remove over 50% NA variables from predictors.
+
+```{r, message=FALSE, warning=FALSE}
+listOmit = vector(mode="numeric",length=0)
+for (i in 1:ncol(tdata))
+{
+  a = tdata[,i]
+  
+  if (length(which(is.na(a))) > 0.5*dim(tdata)[1])
+  {
+    listOmit = c(listOmit,i);
+  }
+}
+
+tdata = tdata[,-listOmit];
+```
+
+As last preprocess, let's remove unnecessary predictors like name and row #.
+
+```{r, message=FALSE, warning=FALSE}
+tdata = tdata[,-c(1,2)]
+dim(tdata)
+```
+
+Finally, we can reduce predictors from 160 to 57.
+Next is splitting train data into training and testing for cross-validation.
+
+```{r, message=FALSE, warning=FALSE}
+#partition
+inTrain = createDataPartition(y=tdata$classe,p=0.7,list=FALSE)
+training = tdata[inTrain,]
+testing = tdata[-inTrain,]
+```
+
+To compare algorithm performance, train data with general tree, random forests, boosting, linear discriminant analysis, naive Bayes and compare error. (note: random forest takes long time (my case several hours). be patient with random forests result)
+
+```{r, message=FALSE, warning=FALSE}
+set.seed(1234)
+
+#tree
+modtree = train(classe~.,method="rpart",data=training)
+cmtreetrain=confusionMatrix(training$classe,predict(modtree,training))
+cmtreetest=confusionMatrix(testing$classe,predict(modtree,testing))
+
+#rf
+modrf = train(classe~.,method="rf",data=training)
+cmrftrain=confusionMatrix(training$classe,predict(modrf,training))
+cmrftest=confusionMatrix(testing$classe,predict(modrf,testing))
+
+#boosting
+modgbm = train(classe~.,method="gbm",data=training, verbose=FALSE)
+cmgbmtrain=confusionMatrix(training$classe,predict(modgbm,training))
+cmgbmtest=confusionMatrix(testing$classe,predict(modgbm,testing))
+
+#model based - lda
+modlda = train(classe~.,method="lda",data=training)
+cmldatrain=confusionMatrix(training$classe,predict(modlda,training))
+cmldatest=confusionMatrix(testing$classe,predict(modlda,testing))
+
+#model based - nb
+modnb = train(classe~.,method="nb",data=training)
+cmnbtrain=confusionMatrix(training$classe,predict(modnb,training))
+cmnbtest=confusionMatrix(testing$classe,predict(modnb,testing))
+
+train_alogrithm=c("tree","rf","gbm","lda","nb")
+train_accuracy=c(cmtreetrain$overall[1],cmrftrain$overall[1],
+                 cmgbmtrain$overall[1],cmldatrain$overall[1],
+                 cmnbtrain$overall[1])
+test_accuracy=c(cmtreetest$overall[1],cmrftest$overall[1],
+                 cmgbmtest$overall[1],cmldatest$overall[1],
+                 cmnbtest$overall[1])
+
+p1=qplot(train_alogrithm,train_accuracy,fill=train_accuracy )+geom_bar(colour="black",stat="identity")+geom_text(label=round(train_accuracy,2))
+p2=qplot(train_alogrithm,test_accuracy,fill=test_accuracy )+geom_bar(colour="black",stat="identity")+geom_text(label=round(test_accuracy,2))
+grid.arrange(p1, p2, ncol=2)
+```
+
+gbm(boosting) and rf(random forests) performance looks similar, but if we check the classification rate, random forest is more accurate in training and testing data set.
+
+```{r, message=FALSE, warning=FALSE}
+#misclassification rate
+cmrftrain$table
+cmgbmtrain$table
+cmrftest$table
+cmgbmtest$table
+```
+
+Based on the algorithm performance, random forest is optimal selection and predict final test data with it.
+
+```{r, message=FALSE, warning=FALSE}
+#misclassification rate
+answers = predict(modrf,ftest)
+print(answers)
+```
+
+
+
+
